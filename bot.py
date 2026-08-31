@@ -48,18 +48,31 @@ async def ss_command(_, message: Message):
 
     args = message.command[1:]
     interval_seconds = None
-    count = 8
+    count = 20
+    range_start = None
+    range_end = None
 
     if len(args) == 2 and args[0].lower() == "every":
         try:
-            interval_seconds = max(1, float(args[1]))
+            interval_seconds = max(0.1, float(args[1]))
         except:
             return await message.reply("Usage: `/ss every 10` for one screenshot every 10 seconds.")
-    elif len(args) == 1:
+    elif len(args) == 2 and ":" in args[0] and ":" in args[1]:
         try:
-            count = max(1, min(int(args[0]), 100))
+            range_start = time_to_seconds(args[0])
+            range_end = time_to_seconds(args[1])
+            interval_seconds = 0.8
         except:
-            count = 8
+            return await message.reply("Usage: `/ss 00:00:00 00:24:37`")
+        if range_end <= range_start:
+            return await message.reply("End time must be after start time.")
+    elif len(args) > 0:
+        return await message.reply(
+            "Usage:\n"
+            "`/ss` → 20 screenshots\n"
+            "`/ss every 10` → one every 10 seconds\n"
+            "`/ss 00:00:00 00:24:37` → one every 0.8s within that range"
+        )
 
     status = await message.reply("Generating screenshots with timestamps...")
 
@@ -77,44 +90,34 @@ async def ss_command(_, message: Message):
         if duration < 1:
             return await status.edit("Could not read video duration.")
 
-        if interval_seconds:
-            count = max(1, int(duration // interval_seconds))
-            interval = interval_seconds
+        if range_start is not None:
+            range_end = min(range_end, duration)
+            times = []
+            t = range_start
+            while t <= range_end:
+                times.append(t)
+                t += interval_seconds
+        elif interval_seconds:
+            times = []
+            t = interval_seconds
+            while t <= duration:
+                times.append(t)
+                t += interval_seconds
         else:
             interval = duration / (count + 1)
+            times = [interval * i for i in range(1, count + 1)]
 
         screenshots = []
 
-        for i in range(1, count + 1):
-            t = interval * i
+        for i, t in enumerate(times, start=1):
             timestamp = seconds_to_time(t)
-            out_path = os.path.join(tmp, f"ss_{i:02d}.jpg")
+            out_path = os.path.join(tmp, f"ss_{i:04d}.jpg")
 
             cmd = [
                 "ffmpeg", "-y",
                 "-ss", str(t),
                 "-i", video_path,
-                "-vframes", "1",
-                "-q:v", "2",
-                out_path
-            ]
-            proc = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
-            )
-            await proc.wait()
-
-            if os.path.exists(out_path):
-                screenshots.append(out_path)
-
-        if not screenshots:
-            return await status.edit("Failed to generate screenshots.")
-
-        for i, path in enumerate(screenshots, start=1):
-            t = interval * i
-            timestamp = seconds_to_time(t)
-            await message.reply_photo(path, caption=f"🕒 {timestamp}")
-
-        await status.delete()
+                "-vframes"
 
 @app.on_message(filters.command("trim") & filters.reply)
 async def trim_command(_, message: Message):
