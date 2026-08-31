@@ -117,7 +117,25 @@ async def ss_command(_, message: Message):
                 "ffmpeg", "-y",
                 "-ss", str(t),
                 "-i", video_path,
-                "-vframes"
+                "-vframes", "1",
+                "-q:v", "2",
+                out_path
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+            )
+            await proc.wait()
+
+            if os.path.exists(out_path):
+                screenshots.append((out_path, timestamp))
+
+        if not screenshots:
+            return await status.edit("Failed to generate screenshots.")
+
+        for path, timestamp in screenshots:
+            await message.reply_photo(path, caption=f"🕒 {timestamp}")
+
+        await status.delete()
 
 @app.on_message(filters.command("trim") & filters.reply)
 async def trim_command(_, message: Message):
