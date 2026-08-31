@@ -13,9 +13,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Install fonts
         run: sudo apt-get install -y fonts-dejavu-core
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Install Python packages
         run: pip install pyrogram tgcrypto
       - name: Run bot
