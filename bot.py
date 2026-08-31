@@ -96,9 +96,10 @@ async def ss_command(_, message: Message):
         if not screenshots:
             return await status.edit("Failed to generate screenshots.")
 
-        for i in range(0, len(screenshots), 10):
-            batch = [InputMediaPhoto(p) for p in screenshots[i:i+10]]
-            await message.reply_media_group(batch)
+        for i, path in enumerate(screenshots, start=1):
+            t = interval * i
+            timestamp = seconds_to_time(t)
+            await message.reply_photo(path, caption=f"🕒 {timestamp}")
 
         await status.delete()
 
