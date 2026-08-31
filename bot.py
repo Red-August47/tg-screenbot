@@ -46,11 +46,20 @@ async def ss_command(_, message: Message):
     if not (replied.video or (replied.document and (replied.document.mime_type or "").startswith("video/"))):
         return await message.reply("Please reply to a video.")
 
-    try:
-        count = int(message.command[1]) if len(message.command) > 1 else 8
-        count = max(1, min(count, 100))
-    except:
-        count = 8
+     args = message.command[1:]
+     interval_seconds = None
+     count = 8
+
+     if len(args) == 2 and args[0].lower() == "every":
+         try:
+             interval_seconds = max(1, float(args[1]))
+         except:
+             return await message.reply("Usage: `/ss every 10` for one screenshot every 10 seconds.")
+     elif len(args) == 1:
+         try:
+             count = max(1, min(int(args[0]), 100))
+         except:
+             count = 8
 
     status = await message.reply(f"Generating {count} screenshots with timestamps...")
 
