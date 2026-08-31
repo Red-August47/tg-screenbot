@@ -95,7 +95,7 @@ async def ss_command(_, message: Message):
                 "-ss", str(t),
                 "-i", video_path,
                 "-vframes", "1",
-                "-vf", f"drawtext=text='{timestamp}':fontcolor=white:fontsize=28:box=1:boxcolor=black@0.6:boxborderw=8:x=20:y=20",
+                "-vf", f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttff:text='{timestamp}':fontcolor=white:fontsize=28:box=1:boxcolor=black@0.6:boxborderw=8:x=20:y=20",
                 "-q:v", "2",
                 out_path
             ]
