@@ -46,22 +46,22 @@ async def ss_command(_, message: Message):
     if not (replied.video or (replied.document and (replied.document.mime_type or "").startswith("video/"))):
         return await message.reply("Please reply to a video.")
 
-     args = message.command[1:]
-     interval_seconds = None
-     count = 8
+    args = message.command[1:]
+    interval_seconds = None
+    count = 8
 
-     if len(args) == 2 and args[0].lower() == "every":
-         try:
-             interval_seconds = max(1, float(args[1]))
-         except:
-             return await message.reply("Usage: `/ss every 10` for one screenshot every 10 seconds.")
-     elif len(args) == 1:
-         try:
-             count = max(1, min(int(args[0]), 100))
-         except:
-             count = 8
+    if len(args) == 2 and args[0].lower() == "every":
+        try:
+            interval_seconds = max(1, float(args[1]))
+        except:
+            return await message.reply("Usage: `/ss every 10` for one screenshot every 10 seconds.")
+    elif len(args) == 1:
+        try:
+            count = max(1, min(int(args[0]), 100))
+        except:
+            count = 8
 
-    status = await message.reply(f"Generating {count} screenshots with timestamps...")
+    status = await message.reply("Generating screenshots with timestamps...")
 
     with tempfile.TemporaryDirectory() as tmp:
         video_path = await replied.download(file_name=os.path.join(tmp, "video.mp4"))
@@ -77,7 +77,12 @@ async def ss_command(_, message: Message):
         if duration < 1:
             return await status.edit("Could not read video duration.")
 
-        interval = duration / (count + 1)
+        if interval_seconds:
+            count = max(1, int(duration // interval_seconds))
+            interval = interval_seconds
+        else:
+            interval = duration / (count + 1)
+
         screenshots = []
 
         for i in range(1, count + 1):
