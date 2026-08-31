@@ -48,7 +48,7 @@ async def ss_command(_, message: Message):
 
     try:
         count = int(message.command[1]) if len(message.command) > 1 else 8
-        count = max(1, min(count, 20))
+        count = max(1, min(count, 100))
     except:
         count = 8
 
