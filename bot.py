@@ -1,8 +1,9 @@
 import os
+import glob
 import asyncio
 import tempfile
 from pyrogram import Client, filters
-from pyrogram.types import Message, InputMediaPhoto
+from pyrogram.types import Message
 
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
@@ -15,6 +16,10 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
+STORAGE_DIR = tempfile.mkdtemp()
+stored_video = {"path": None}
+
+
 def time_to_seconds(t: str) -> float:
     parts = list(map(float, t.strip().split(":")))
     if len(parts) == 3:
@@ -23,29 +28,90 @@ def time_to_seconds(t: str) -> float:
         return parts[0]*60 + parts[1]
     return parts[0]
 
+
 def seconds_to_time(seconds: float) -> str:
     h = int(seconds // 3600)
     m = int((seconds % 3600) // 60)
     s = int(seconds % 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
 
+
+async def get_duration(video_path: str) -> float:
+    process = await asyncio.create_subprocess_exec(
+        "ffprobe", "-v", "error", "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1", video_path,
+        stdout=asyncio.subprocess.PIPE
+    )
+    stdout, _ = await process.communicate()
+    return float(stdout.decode().strip() or 0)
+
+
+async def extract_frames(video_path: str, tmp: str, start_offset: float, interval: float, end_offset: float):
+    pattern = os.path.join(tmp, "frame_%05d.jpg")
+    span = max(0.1, end_offset - start_offset)
+
+    cmd = ["ffmpeg", "-y"]
+    if start_offset > 0:
+        cmd += ["-ss", str(start_offset)]
+    cmd += ["-i", video_path, "-t", str(span), "-vf", f"fps=1/{interval}", "-q:v", "2", pattern]
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+    )
+    await proc.wait()
+
+    files = sorted(glob.glob(os.path.join(tmp, "frame_*.jpg")))
+    results = []
+    for idx, path in enumerate(files):
+        t = start_offset + idx * interval
+        results.append((path, seconds_to_time(t)))
+    return results
+
+
 @app.on_message(filters.command("start"))
 async def start(_, message: Message):
     await message.reply(
         "**Personal Screenshot & Trim Bot**\n\n"
-        "Send me a video, then use:\n\n"
-        "• `/ss` → 8 screenshots\n"
-        "• `/ss 12` → 12 screenshots (max 20)\n"
-        "• `/trim 00:01:20 00:02:45` → Cut a clip\n\n"
-        "Every screenshot will have the exact timestamp written on it."
+        "• `/store` (reply to a video) → store it for this session\n"
+        "• `/ss` → 20 screenshots\n"
+        "• `/ss every 10` → one every 10 seconds\n"
+        "• `/ss 00:00:00 00:24:37` → one every 0.8s within that range\n"
+        "• `/trim 00:01:20 00:02:45` → cut a clip\n\n"
+        "Once you `/store` a video, `/ss` and `/trim` work without replying again."
     )
 
-@app.on_message(filters.command("ss") & filters.reply)
-async def ss_command(_, message: Message):
+
+@app.on_message(filters.command("store") & filters.reply)
+async def store_command(_, message: Message):
     replied = message.reply_to_message
     if not (replied.video or (replied.document and (replied.document.mime_type or "").startswith("video/"))):
         return await message.reply("Please reply to a video.")
 
+    status = await message.reply("Storing video for this session...")
+
+    video_path = await replied.download(file_name=os.path.join(STORAGE_DIR, "stored_video.mp4"))
+    stored_video["path"] = video_path
+
+    duration = await get_duration(video_path)
+
+    await status.edit(
+        f"Video stored for this session.\n"
+        f"Duration: {seconds_to_time(duration)}\n\n"
+        f"Now `/ss` and `/trim` will use this video automatically."
+    )
+
+
+async def resolve_video(message: Message, tmp: str):
+    replied = message.reply_to_message
+    if replied and (replied.video or (replied.document and (replied.document.mime_type or "").startswith("video/"))):
+        return await replied.download(file_name=os.path.join(tmp, "video.mp4"))
+    if stored_video["path"] and os.path.exists(stored_video["path"]):
+        return stored_video["path"]
+    return None
+
+
+@app.on_message(filters.command("ss"))
+async def ss_command(_, message: Message):
     args = message.command[1:]
     interval_seconds = None
     count = 20
@@ -77,72 +143,40 @@ async def ss_command(_, message: Message):
     status = await message.reply("Generating screenshots with timestamps...")
 
     with tempfile.TemporaryDirectory() as tmp:
-        video_path = await replied.download(file_name=os.path.join(tmp, "video.mp4"))
+        video_path = await resolve_video(message, tmp)
+        if not video_path:
+            return await status.edit("Please reply to a video, or `/store` one first.")
 
-        process = await asyncio.create_subprocess_exec(
-            "ffprobe", "-v", "error", "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1", video_path,
-            stdout=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await process.communicate()
-        duration = float(stdout.decode().strip() or 0)
-
+        duration = await get_duration(video_path)
         if duration < 1:
             return await status.edit("Could not read video duration.")
 
         if range_start is not None:
-            range_end = min(range_end, duration)
-            times = []
-            t = range_start
-            while t <= range_end:
-                times.append(t)
-                t += interval_seconds
+            start_offset = range_start
+            end_offset = min(range_end, duration)
+            interval = interval_seconds
         elif interval_seconds:
-            times = []
-            t = interval_seconds
-            while t <= duration:
-                times.append(t)
-                t += interval_seconds
+            start_offset = interval_seconds
+            end_offset = duration
+            interval = interval_seconds
         else:
             interval = duration / (count + 1)
-            times = [interval * i for i in range(1, count + 1)]
+            start_offset = interval
+            end_offset = duration
 
-        screenshots = []
-
-        for i, t in enumerate(times, start=1):
-            timestamp = seconds_to_time(t)
-            out_path = os.path.join(tmp, f"ss_{i:04d}.jpg")
-
-            cmd = [
-                "ffmpeg", "-y",
-                "-ss", str(t),
-                "-i", video_path,
-                "-vframes", "1",
-                "-q:v", "2",
-                out_path
-            ]
-            proc = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
-            )
-            await proc.wait()
-
-            if os.path.exists(out_path):
-                screenshots.append((out_path, timestamp))
+        screenshots = await extract_frames(video_path, tmp, start_offset, interval, end_offset)
 
         if not screenshots:
             return await status.edit("Failed to generate screenshots.")
 
         for path, timestamp in screenshots:
-            await message.reply_photo(path, caption=f"🕒 {timestamp}")
+            await message.reply_photo(path, caption=timestamp)
 
         await status.delete()
 
-@app.on_message(filters.command("trim") & filters.reply)
-async def trim_command(_, message: Message):
-    replied = message.reply_to_message
-    if not (replied.video or (replied.document and (replied.document.mime_type or "").startswith("video/"))):
-        return await message.reply("Please reply to a video.")
 
+@app.on_message(filters.command("trim"))
+async def trim_command(_, message: Message):
     if len(message.command) < 3:
         return await message.reply(
             "Usage:\n`/trim START END`\n\n"
@@ -164,7 +198,10 @@ async def trim_command(_, message: Message):
     status = await message.reply(f"Trimming from {seconds_to_time(start)} → {seconds_to_time(end)}...")
 
     with tempfile.TemporaryDirectory() as tmp:
-        video_path = await replied.download(file_name=os.path.join(tmp, "input.mp4"))
+        video_path = await resolve_video(message, tmp)
+        if not video_path:
+            return await status.edit("Please reply to a video, or `/store` one first.")
+
         output_path = os.path.join(tmp, "trimmed.mp4")
 
         cmd = [
@@ -204,16 +241,21 @@ async def trim_command(_, message: Message):
         else:
             await status.edit("Failed to trim the video.")
 
+
 @app.on_message(filters.video | filters.document)
 async def on_video(_, message: Message):
     if message.document and not (message.document.mime_type or "").startswith("video/"):
         return
+    duration = message.video.duration if message.video else None
+    duration_text = f"Duration: {seconds_to_time(duration)}\n\n" if duration else ""
     await message.reply(
-        "Video received!\n\n"
+        f"Video received!\n{duration_text}"
         "Reply with:\n"
-        "• `/ss` or `/ss 10` → Screenshots\n"
-        "• `/trim 00:01:20 00:02:45` → Cut clip"
+        "• `/store` → save it for this session (then use /ss and /trim without replying again)\n"
+        "• `/ss` → 20 screenshots\n"
+        "• `/trim 00:01:20 00:02:45` → cut clip"
     )
+
 
 if __name__ == "__main__":
     print("Bot started...")
