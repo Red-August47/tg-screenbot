@@ -65,7 +65,7 @@ async def download_with_progress(replied, dest_path, status):
 
 async def extract_frames(video_path: str, tmp: str, start_offset: float, interval: float, end_offset: float):
     pattern = os.path.join(tmp, "frame_%05d.jpg")
-    span = max(0.1, end_offset - start_offset)
+    span = max(0.1, end_offset - start_offset) + interval
 
     cmd = ["ffmpeg", "-y"]
     if start_offset > 0:
@@ -149,6 +149,13 @@ async def ss_command(_, message: Message):
             return await message.reply("Usage: `/ss 00:00:00 00:24:37`")
         if range_end <= range_start:
             return await message.reply("End time must be after start time.")
+    elif len(args) == 1 and ":" in args[0]:
+        try:
+            range_start = 0.0
+            range_end = time_to_seconds(args[0])
+            interval_seconds = 0.8
+        except:
+            return await message.reply("Usage: `/ss 00:20:00` for start-to-that-point.")
     elif len(args) > 0:
         return await message.reply(
             "Usage:\n"
