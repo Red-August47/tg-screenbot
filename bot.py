@@ -268,9 +268,9 @@ async def on_video(_, message: Message):
     await message.reply(
         f"Video received!\n{duration_text}"
         "Reply with:\n"
-        "• `/store` → save it for this session (then use /ss and /trim without replying again)\n"
-        "• `/ss` → 20 screenshots\n"
-        "• `/trim 00:01:20 00:02:45` → cut clip"
+        "• /store → save it for this session (then use `/ss` and `/trim` without replying again)\n"
+        "• /ss → 20 screenshots\n"
+        "• /trim 00:01:20 00:02:45 → cut clip"
     )
 
 
