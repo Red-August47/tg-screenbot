@@ -46,6 +46,23 @@ async def get_duration(video_path: str) -> float:
     return float(stdout.decode().strip() or 0)
 
 
+async def download_with_progress(replied, dest_path, status):
+    last_update = {"time": 0.0}
+
+    async def progress(current, total):
+        now = asyncio.get_event_loop().time()
+        if total and (now - last_update["time"] > 4 or current == total):
+            last_update["time"] = now
+            percent = current * 100 / total
+            try:
+                await status.edit(f"Downloading video... {percent:.0f}%")
+            except:
+                pass
+
+    return await replied.download(file_name=dest_path, progress=progress)
+
+
+
 async def extract_frames(video_path: str, tmp: str, start_offset: float, interval: float, end_offset: float):
     pattern = os.path.join(tmp, "frame_%05d.jpg")
     span = max(0.1, end_offset - start_offset)
@@ -89,7 +106,7 @@ async def store_command(_, message: Message):
 
     status = await message.reply("Storing video for this session...")
 
-    video_path = await replied.download(file_name=os.path.join(STORAGE_DIR, "stored_video.mp4"))
+    video_path = await download_with_progress(replied, os.path.join(STORAGE_DIR, "stored_video.mp4"), status)
     stored_video["path"] = video_path
 
     duration = await get_duration(video_path)
@@ -101,10 +118,10 @@ async def store_command(_, message: Message):
     )
 
 
-async def resolve_video(message: Message, tmp: str):
+async def resolve_video(message: Message, tmp: str, status: Message):
     replied = message.reply_to_message
     if replied and (replied.video or (replied.document and (replied.document.mime_type or "").startswith("video/"))):
-        return await replied.download(file_name=os.path.join(tmp, "video.mp4"))
+        return await download_with_progress(replied, os.path.join(tmp, "video.mp4"), status)
     if stored_video["path"] and os.path.exists(stored_video["path"]):
         return stored_video["path"]
     return None
@@ -143,7 +160,7 @@ async def ss_command(_, message: Message):
     status = await message.reply("Generating screenshots with timestamps...")
 
     with tempfile.TemporaryDirectory() as tmp:
-        video_path = await resolve_video(message, tmp)
+        video_path = await resolve_video(message, tmp, status)
         if not video_path:
             return await status.edit("Please reply to a video, or `/store` one first.")
 
@@ -198,7 +215,7 @@ async def trim_command(_, message: Message):
     status = await message.reply(f"Trimming from {seconds_to_time(start)} → {seconds_to_time(end)}...")
 
     with tempfile.TemporaryDirectory() as tmp:
-        video_path = await resolve_video(message, tmp)
+        video_path = await resolve_video(message, tmp, status)
         if not video_path:
             return await status.edit("Please reply to a video, or `/store` one first.")
 
