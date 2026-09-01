@@ -186,8 +186,9 @@ async def ss_command(_, message: Message):
         if not screenshots:
             return await status.edit("Failed to generate screenshots.")
 
-        for path, timestamp in screenshots:
-            await message.reply_photo(path, caption=timestamp)
+        for idx, (path, timestamp) in enumerate(screenshots):
+            is_last = idx == len(screenshots) - 1
+            await message.reply_photo(path, caption=timestamp, quote=is_last)
 
         await status.delete()
 
