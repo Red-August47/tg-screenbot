@@ -112,11 +112,19 @@ async def store_command(_, message: Message):
 
     duration = await get_duration(video_path)
 
-    await status.edit(
-        f"Video stored for this session.\n"
-        f"Duration: {seconds_to_time(duration)}\n\n"
-        f"Now `/ss` and `/trim` will use this video automatically."
-    )
+    try:
+        await status.edit(
+            f"Video stored for this session.\n"
+            f"Duration: `{seconds_to_time(duration)}`\n\n"
+            f"Now `/ss` and `/trim` will use this video automatically."
+        )
+    except FloodWait as e:
+        print(f"[flood wait on store confirmation] sleeping {e.value}s")
+        await asyncio.sleep(e.value + 1)
+        try:
+            await status.edit("Video stored for this session.")
+        except Exception:
+            pass
 
 
 async def resolve_video(message: Message, tmp: str, status: Message):
@@ -283,7 +291,7 @@ async def on_video(_, message: Message):
     if message.document and not (message.document.mime_type or "").startswith("video/"):
         return
     duration = message.video.duration if message.video else None
-    duration_text = f"Duration: {seconds_to_time(duration)}\n\n" if duration else ""
+    duration_text = f"Duration: `{seconds_to_time(duration)}`\n\n" if duration else ""
     await message.reply(
         f"Video received!\n{duration_text}"
         "Reply with:\n"
