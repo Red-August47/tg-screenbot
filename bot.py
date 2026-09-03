@@ -3,6 +3,7 @@ import glob
 import asyncio
 import tempfile
 from pyrogram import Client, filters
+from pyrogram.errors import FloodWait
 from pyrogram.types import Message
 
 API_ID = int(os.getenv("API_ID"))
@@ -56,8 +57,8 @@ async def download_with_progress(replied, dest_path, status):
             percent = current * 100 / total
             try:
                 await status.edit(f"Downloading video... {percent:.0f}%")
-            except:
-                pass
+            except Exception as e:
+                print(f"[progress edit failed] {type(e).__name__}: {e}")
 
     return await replied.download(file_name=dest_path, progress=progress)
 
@@ -195,7 +196,17 @@ async def ss_command(_, message: Message):
 
         for idx, (path, timestamp) in enumerate(screenshots):
             is_last = idx == len(screenshots) - 1
-            await message.reply_photo(path, caption=timestamp, quote=is_last)
+            while True:
+                try:
+                    await message.reply_photo(path, caption=timestamp, quote=is_last)
+                    break
+                except FloodWait as e:
+                    print(f"[flood wait] sleeping {e.value}s at screenshot {idx+1}/{len(screenshots)}")
+                    await status.edit(f"Rate limited by Telegram, waiting {e.value}s... ({idx+1}/{len(screenshots)} sent)")
+                    await asyncio.sleep(e.value + 1)
+                except Exception as e:
+                    print(f"[send failed] {type(e).__name__}: {e} at screenshot {idx+1}")
+                    break
 
         await status.delete()
 
