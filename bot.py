@@ -2,9 +2,9 @@ import os
 import glob
 import asyncio
 import tempfile
-from pyrogram import Client, filters
+from pyrogram import Client, filters, idle
 from pyrogram.errors import FloodWait
-from pyrogram.types import Message
+from pyrogram.types import Message, BotCommand
 
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
@@ -398,6 +398,20 @@ async def on_video(_, message: Message):
     )
 
 
-if __name__ == "__main__":
+async def main():
+    await app.start()
+    await app.set_bot_commands([
+        BotCommand("start", "Show usage instructions"),
+        BotCommand("store", "Store a video for this session"),
+        BotCommand("ss", "Generate screenshots"),
+        BotCommand("trim", "Cut a video clip"),
+        BotCommand("cancel", "Stop the current job early"),
+        BotCommand("stop", "Shut down the bot"),
+    ])
     print("Bot started...")
-    app.run()
+    await idle()
+    await app.stop()
+
+
+if __name__ == "__main__":
+    app.run(main())
