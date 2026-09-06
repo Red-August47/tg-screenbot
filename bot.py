@@ -9,6 +9,7 @@ from pyrogram.types import Message, BotCommand
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
 
 app = Client(
     "screenshot_bot",
@@ -409,6 +410,13 @@ async def main():
         BotCommand("stop", "Shut down the bot"),
     ])
     print("Bot started...")
+
+    if ADMIN_CHAT_ID:
+        try:
+            await app.send_message(int(ADMIN_CHAT_ID), "✅ Bot is online and ready.")
+        except Exception as e:
+            print(f"[startup notification failed] {type(e).__name__}: {e}")
+
     await idle()
     await app.stop()
 
